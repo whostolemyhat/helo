@@ -1,19 +1,22 @@
 extern crate rand;
 extern crate iron;
 extern crate rustc_serialize;
+extern crate router;
 
 use iron::prelude::*;
 use iron::status;
 use iron::mime::Mime;
 use rand::Rng;
 use rustc_serialize::json;
+use router::Router;
+use std::io::Read;
 
-#[derive(RustcEncodable)]
+#[derive(RustcEncodable, RustcDecodable)]
 struct JsonResponse {
   name: String
 }
 
-fn pick_response() -> String {
+fn pick_response(name: String) -> String {
   let num = rand::thread_rng().gen_range(1, 12);
 
   // let response = match num {
@@ -27,7 +30,6 @@ fn pick_response() -> String {
   let types = vec!["Demon", "Gargoyle", "Dragon", "Witch", "Golem", "Knight", "Wolf", "Butcher", "Tusk", "Golem", "Rat", "Hydra", "Wall Hugger", "Prince", "Slayer", "King", "Blacksmith", "Princess", "Merchant", "Scholar", "Oracle", "Guard", "Captain", "Chancellor", "Herald", "Housekeeper", "Laddersmith", "Manscorpion", "Warrior", "Trader", "Lord", "Sentinel", "Queen", "Ogre", "Denizen", "Seeker", "Watcher", "Devourer", "Outrider Knight", "High Priestess", "Mother"];
   let suffixes = vec!["of Chaos", "of the Abyss", "of Cinder", "of Thorns", "of the Darkroot Wood", "of Astora", "of Zena", "of Oolacile", "of Vinheim", "of Sunlight", "of Carim", "of the Great Swamp", "of Thorolund", "of Izalith", "of the East", "of Catarina", "of the First Sin", "of Jugo", "of Mirrah", "of Lanafir", "of Olaphis", "of Song", "of Londor", "of the Spurned", "of the Sunless Realms", "of Carim", "of the Boreal Valley", "of the Deep", "of Lothric Castle", "of Courland", "of Rebirth"];
   let nicknames = vec!["the Scaleless", "the Great", "the Rock", "the Crow", "the Cartographer", "the Wanderer", "the Pardoner", "the Outcast", "the Armourer", "the Crestfallen", "the Lost", "the Ruined", "the Baleful", "the King\"s Pet", "the Squalid", "the Explorer", "the Butcher", "the Deserter", "the Hushed", "the Giant", "the Consumed"];
-  let name = "Brian";
 
   let prefix = prefixes[rand::thread_rng().gen_range(0, prefixes.len())];
   let name_type = types[rand::thread_rng().gen_range(0, types.len())];
@@ -52,14 +54,51 @@ fn pick_response() -> String {
   response.to_string()
 }
 
+fn get_name(name: String) -> String {
+  pick_response(name)
+}
+
+fn get_default_name() -> String {
+  pick_response("Brian".to_string())
+}
+
+fn handler(req: &mut Request) -> IronResult<Response> {
+  let response = JsonResponse { name: get_default_name() };
+  let out = json::encode(&response).unwrap();
+
+  let content_type = "application/json".parse::<Mime>().unwrap();
+  Ok(Response::with((content_type, status::Ok, out)))
+}
+
+fn get_handler(req: &mut Request) -> IronResult<Response> {
+  let ref name = req.extensions.get::<Router>().unwrap().find("name").unwrap_or("/");
+
+  let response = JsonResponse { name: get_name((*name).to_string()) };
+  let out = json::encode(&response).unwrap();
+
+  let content_type = "application/json".parse::<Mime>().unwrap();
+  Ok(Response::with((content_type, status::Ok, out)))
+}
+
+fn post_handler(req: &mut Request) -> IronResult<Response> {
+  let mut payload = String::new();
+  req.body.read_to_string(&mut payload).unwrap();
+  println!("{:?}", payload);
+
+  let incoming: JsonResponse = json::decode(&payload).unwrap();
+
+  let response = JsonResponse { name: get_name(incoming.name) };
+  let out = json::encode(&response).unwrap();
+
+  let content_type = "application/json".parse::<Mime>().unwrap();
+  Ok(Response::with((content_type, status::Ok, out)))
+}
+
 fn main() {
+  let mut router = Router::new();
+  router.get("/", handler, "index");
+  router.get("/:name", get_handler, "name");
+  router.post("/", post_handler, "post_name");
 
-
-  Iron::new(|_: &mut Request| {
-    let content_type = "application/json".parse::<Mime>().unwrap();
-    let response = JsonResponse { response: pick_response() };
-    let out = json::encode(&response).unwrap();
-
-    Ok(Response::with((content_type, status::Ok, out)))
-  }).http("localhost:3009").unwrap();
+  Iron::new(router).http("localhost:3009").unwrap();
 }

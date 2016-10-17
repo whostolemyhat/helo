@@ -157,7 +157,7 @@ fn main() {
 
 ```
 
-If you try to run this, you'll get an error complaining that our struct doesn't satisfy the `serde::Serialize` trait
+If you try to run this, you'll get an error complaining that our struct doesn't satisfy the `Encodable` trait:
 
 ![](trait.png)
 
@@ -174,6 +174,55 @@ and run:
 ![](random-json.png)
 
 ## get and post
+Let's edit the reponse so we can take a parameter from get or post, and display it back. Update `pick_response` so it takes a name, and returns a formatted string:
+
+```
+fn pick_response(name: String) -> String {
+  let num = rand::thread_rng().gen_range(1, 4);
+
+  let response = match num {
+    1 => format!("Hello {}!", name),
+    2 => format!("Did you see that ludicrous display last night, {}?", name),
+    3 => format!("Nice weather for ducks, isn't it {}", name),
+    _ => ""     // match is exhaustive
+  };
+
+  response.to_string()
+}
+```
+
+We also need to install 'router' so we have a way of defining routes in Iron:
+
+```
+[dependencies]
+iron = "0.4.0"
+rustc-serialize = "0.3"
+rand = "0.3"
+router = "0.4.0"
+```
+
+Now update `main()` to seperate the route handler
+
+```
+fn handler(req: &mut Request) -> IronResult<Response> {
+  let response = JsonResponse { name: pick_response("Brian".to_string()) };
+  let out = json::encode(&response).unwrap();
+
+  let content_type = "application/json".parse::<Mime>().unwrap();
+  Ok(Response::with((content_type, status::Ok, out)))
+}
+
+fn main() {
+  let mut router = Router::new();
+  router.get("/", handler, "index");
+
+  Iron::new(router).http("localhost:3009").unwrap();
+}
+```
+
+This moves the handler for 'GET' requests to the index into its own function, which now also passes a string to `pick_response` since there are no parameters in the default request.
+
+## errror
 ## gnu header
 ## logging
 ## deploy/compile flag
