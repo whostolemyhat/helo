@@ -519,8 +519,5 @@ fn post_handler(req: &mut Request) -> IronResult<Response> {
 }
 ```
 
-## gnu header
-## logging
 ## deploy/compile flag
 ## nginx
-## https

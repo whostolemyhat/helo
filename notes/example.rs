@@ -80,5 +80,6 @@ fn main() {
   router.get("/", handler, "index");
   router.post("/", post_handler, "post_name");
 
-  Iron::new(router).http("localhost:3009").unwrap();
+  println!("Listening on localhost:3009");
+  Iron::new(router).http("localhost:3009").ok();
 }
