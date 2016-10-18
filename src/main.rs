@@ -75,42 +75,40 @@ fn get_default_name() -> String {
 fn handler(req: &mut Request) -> IronResult<Response> {
   // let response = JsonResponse { name: get_default_name(), success: true, errorMessage: "" };
   let response = JsonResponse::success(get_default_name());
-  let out = json::encode(&response).unwrap();
+  let out = json::encode(&response).expect("Error encoding response");
 
-  let content_type = "application/json".parse::<Mime>().unwrap();
+  let content_type = "application/json".parse::<Mime>().expect("Failed to parse content type");
   Ok(Response::with((content_type, status::Ok, out)))
 }
 
 fn get_handler(req: &mut Request) -> IronResult<Response> {
   let ref name = req.extensions.get::<Router>().unwrap().find("name").unwrap_or("/");
-
   let response = JsonResponse::success(get_name((*name).to_string()));
-  let out = json::encode(&response).unwrap();
+  let out = json::encode(&response).expect("Error encoding response");
 
-  let content_type = "application/json".parse::<Mime>().unwrap();
+  let content_type = "application/json".parse::<Mime>().expect("Failed to parse content type");
   Ok(Response::with((content_type, status::Ok, out)))
 }
 
 fn post_handler(req: &mut Request) -> IronResult<Response> {
   let mut payload = String::new();
-  req.body.read_to_string(&mut payload).expect("No body in POST");
+  req.body.read_to_string(&mut payload).expect("Failed to read request body");
 
   // let incoming: JsonResponse = json::decode(&payload).ok().expect("Invalid JSON in POST body");
   let out = match json::decode(&payload) {
     Err(e) => {
       let response = JsonResponse::error(format!("Error parsing JSON: {:?}", e));
-      json::encode(&response).unwrap()
+      json::encode(&response).ok().expect("Error encoding response")
     },
     Ok(incoming) => {
       let converted: JsonRequest = incoming;
       let response = JsonResponse::success(get_name(converted.name));
-      json::encode(&response).unwrap()
+      json::encode(&response).expect("Error encoding response")
     }
   };
 
-  let content_type = "application/json".parse::<Mime>().unwrap();
+  let content_type = "application/json".parse::<Mime>().expect("Failed to parse content type");
   Ok(Response::with((content_type, status::Ok, out)))
-
 }
 
 fn main() {
@@ -119,6 +117,6 @@ fn main() {
   router.get("/:name", get_handler, "name");
   router.post("/", post_handler, "post_name");
 
-  Iron::new(router).http("localhost:3009").unwrap();
   println!("Listening on localhost:3009");
+  Iron::new(router).http("localhost:3009").ok();
 }

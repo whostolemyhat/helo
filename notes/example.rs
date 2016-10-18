@@ -48,26 +48,30 @@ fn pick_response(name: String) -> String {
 
 fn handler(req: &mut Request) -> IronResult<Response> {
   let response = JsonResponse::success(response: pick_response("Brian".to_string()));
-  let out = json::encode(&response).unwrap();
+  let out = json::encode(&response).expect("Failed to encode response");
 
-  let content_type = "application/json".parse::<Mime>().unwrap();
+  let content_type = "application/json".parse::<Mime>().expect("Failed to parse content type");
   Ok(Response::with((content_type, status::Ok, out)))
 }
 
 fn post_handler(req: &mut Request) -> IronResult<Response> {
   let mut payload = String::new();
+  req.body.read_to_string(&mut payload).expect("Failed to read request body");
 
-  // read the POST body
-  req.body.read_to_string(&mut payload).unwrap();
-  println!("{:?}", payload);
+  // let incoming: JsonResponse = json::decode(&payload).ok().expect("Invalid JSON in POST body");
+  let out = match json::decode(&payload) {
+    Err(e) => {
+      let response = JsonResponse::error(format!("Error parsing JSON: {:?}", e));
+      json::encode(&response).ok().expect("Error encoding response")
+    },
+    Ok(incoming) => {
+      let converted: JsonRequest = incoming;
+      let response = JsonResponse::success(get_name(converted.name));
+      json::encode(&response).expect("Error encoding response")
+    }
+  };
 
-  let incoming: JsonRequest = json::decode(&payload).unwrap();
-
-  // create a response with our random string, and pass in the string from the POST body
-  let response = JsonResponse::success(response: pick_response(incoming.name));
-  let out = json::encode(&response).unwrap();
-
-  let content_type = "application/json".parse::<Mime>().unwrap();
+  let content_type = "application/json".parse::<Mime>().expect("Failed to parse content type");
   Ok(Response::with((content_type, status::Ok, out)))
 }
 

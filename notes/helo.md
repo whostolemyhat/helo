@@ -402,7 +402,7 @@ impl JsonResponse {
 }
 ```
 
-We'll also need a new struct for incoming requests, since users don't need to send 'success' or 'error_message' fields:
+(whether or not it's a good idea to send raw error messages to users I'll leave up to you). We'll also need a new struct for incoming requests, since users don't need to send 'success' or 'error_message' fields:
 
 ```
 #[derive(RustcDecodable)]
@@ -436,6 +436,85 @@ fn post_handler(req: &mut Request) -> IronResult<Response> {
   let out = json::encode(&response).unwrap();
 
   let content_type = "application/json".parse::<Mime>().unwrap();
+  Ok(Response::with((content_type, status::Ok, out)))
+}
+```
+
+In `post_handler`, we can now use a `match` to check if the incoming JSON is correct, rather than an `unwrap` call. If there is an error, then we create a response with the error message and send that; if not, we can respond as usual.
+
+```
+fn post_handler(req: &mut Request) -> IronResult<Response> {
+  let mut payload = String::new();
+  req.body.read_to_string(&mut payload).unwrap();
+  println!("{:?}", payload);
+
+  let out = match json::decode(&payload) {
+    Err(e) => {
+      let response = JsonResponse::error(format!("Error parsing JSON: {:?}", e));
+      json::encode(&response).unwrap()
+    },
+    Ok(incoming) => {
+      // Rust needs to know the type of incoming before we can use it in get_name, so set to a variable with a type
+      let converted: JsonRequest = incoming;
+      let response = JsonResponse::success(get_name(converted.name));
+      json::encode(&response).unwrap()
+    }
+  };
+
+  // print out the JSON as usual
+  let content_type = "application/json".parse::<Mime>().unwrap();
+  Ok(Response::with((content_type, status::Ok, out)))
+}
+```
+
+Error response:
+```
+curl -X POST -d '{ invalid: "Bob" }' http://localhost:3009
+
+{"name":"","success":false,"error_message":"Error parsing JSON: ParseError(SyntaxError(\"key must be a string\", 1, 3))"}
+```
+
+Normal response:
+```
+curl -X POST -d '{ "name":"Bob" }' http://localhost:3009
+
+{"name":"Hello Bob!","success":true,"error_message":""}
+```
+
+We've also got an `unwrap` when reading the request body:
+```
+req.body.read_to_string(&mut payload).unwrap();
+```
+
+If something goes wrong here, then it's likely that the post body is completely malformed and we can't use it, so we may as well stop trying to handle this request. If we fail out of this function, the server will still be listening for more requests so won't crash entirely, so we can replace `unwrap` with `expect`. `expect` is very similar to `unwrap` in that it panics on error, except it allows you to define your own error message so it's clear what happened.
+
+```
+req.body.read_to_string(&mut payload).expect("Failed to read request body");
+```
+
+Similarly, the `json::encode` lines in the match statement can use `expect` rather than `unwrap` - in this case, something's gone wrong when with the JSON encoder, so we're not able to prepare JSON to send back to the user.
+
+The final `unwrap` in this function is in setting the content type; again, an `expect` seems appropriate since this should just indicate programmer error.
+
+```
+fn post_handler(req: &mut Request) -> IronResult<Response> {
+  let mut payload = String::new();
+  req.body.read_to_string(&mut payload).expect("Failed to read request body");
+
+  // let incoming: JsonResponse = json::decode(&payload).ok().expect("Invalid JSON in POST body");
+  let out = match json::decode(&payload) {
+    Err(e) => {
+      let response = JsonResponse::error(format!("Error parsing JSON: {:?}", e));
+      json::encode(&response).ok().expect("Error encoding response")
+    },
+    Ok(incoming) => {
+      let converted: JsonRequest = incoming;
+      let response = JsonResponse::success(get_name(converted.name));
+      json::encode(&response).expect("Error encoding response")
+    }
+  };
+
+  let content_type = "application/json".parse::<Mime>().expect("Failed to parse mime type");
   Ok(Response::with((content_type, status::Ok, out)))
 }
 ```
