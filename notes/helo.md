@@ -184,7 +184,7 @@ fn pick_response(name: String) -> String {
     1 => format!("Hello {}!", name),
     2 => format!("Did you see that ludicrous display last night, {}?", name),
     3 => format!("Nice weather for ducks, isn't it {}", name),
-    _ => ""     // match is exhaustive
+    _ => format!("")     // match is exhaustive
   };
 
   response.to_string()
@@ -204,8 +204,13 @@ router = "0.4.0"
 Now update `main()` to seperate the route handler
 
 ```
+extern crate router;
+
+use router::Router;
+use std::io::Read;
+
 fn handler(req: &mut Request) -> IronResult<Response> {
-  let response = JsonResponse { name: pick_response("Brian".to_string()) };
+  let response = JsonResponse { response: pick_response("Brian".to_string()) };
   let out = json::encode(&response).unwrap();
 
   let content_type = "application/json".parse::<Mime>().unwrap();
@@ -220,9 +225,221 @@ fn main() {
 }
 ```
 
-This moves the handler for 'GET' requests to the index into its own function, which now also passes a string to `pick_response` since there are no parameters in the default request.
+This moves the handler for `GET` requests to the index into its own function, which now also passes a string to `pick_response` since there are no parameters in the default request. Adding a route for a `POST` request is very similar:
 
-## errror
+```
+// make sure we can encode and decode from this struct (for post)
+#[derive(RustcEncodable, RustcDecodable)]
+struct JsonResponse {
+  response: String
+}
+
+
+fn handler(req: &mut Request) -> IronResult<Response> {
+  let response = JsonResponse { response: pick_response("Brian".to_string()) };
+  let out = json::encode(&response).unwrap();
+
+  let content_type = "application/json".parse::<Mime>().unwrap();
+  Ok(Response::with((content_type, status::Ok, out)))
+}
+
+fn post_handler(req: &mut Request) -> IronResult<Response> {
+  let mut payload = String::new();
+
+  // read the POST body
+  req.body.read_to_string(&mut payload).unwrap();
+  println!("{:?}", payload);
+
+  // we're expecting the POST to match the format of our JsonResponse struct
+  // ie { "response": "Brian" }
+  let incoming: JsonResponse = json::decode(&payload).unwrap();
+
+  // create a response with our random string, and pass in the string from the POST body
+  let response = JsonResponse { response: pick_response(incoming.response) };
+  let out = json::encode(&response).unwrap();
+
+  let content_type = "application/json".parse::<Mime>().unwrap();
+  Ok(Response::with((content_type, status::Ok, out)))
+}
+
+fn main() {
+  let mut router = Router::new();
+  router.get("/", handler, "index");
+  router.post("/", post_handler, "post_name");
+
+  Iron::new(router).http("localhost:3009").unwrap();
+}
+```
+
+Now, when we visit the homepage, we get a random phrase with "Brian":
+
+![](name-get.png)
+
+and with a POST request, we get a response with the name we send:
+
+```
+curl -X POST -d '{ "response":"Bob" }' http://localhost:3009
+{"response":"Did you see that ludicrous display last night, Bob?"}
+```
+
+Full programme so far:
+
+```
+extern crate rand;
+extern crate iron;
+extern crate rustc_serialize;
+extern crate router;
+
+use iron::prelude::*;
+use iron::status;
+use iron::mime::Mime;
+use rand::Rng;
+use rustc_serialize::json;
+use router::Router;
+use std::io::Read;
+
+#[derive(RustcEncodeable)]
+struct JsonResponse {
+  response: String
+}
+
+fn pick_response(name: String) -> String {
+  let num = rand::thread_rng().gen_range(1, 4);
+
+  let response = match num {
+    1 => format!("Hello {}!", name),
+    2 => format!("Did you see that ludicrous display last night, {}?", name),
+    3 => format!("Nice weather for ducks, isn't it {}", name),
+    _ => format!("")     // match is exhaustive
+  };
+
+  response.to_string()
+}
+
+fn handler(req: &mut Request) -> IronResult<Response> {
+  let response = JsonResponse { response: pick_response("Brian".to_string()) };
+  let out = json::encode(&response).unwrap();
+
+  let content_type = "application/json".parse::<Mime>().unwrap();
+  Ok(Response::with((content_type, status::Ok, out)))
+}
+
+fn post_handler(req: &mut Request) -> IronResult<Response> {
+  let mut payload = String::new();
+
+  // read the POST body
+  req.body.read_to_string(&mut payload).unwrap();
+  println!("{:?}", payload);
+
+  // we're expecting the POST to match the format of our JsonResponse struct
+  // ie { "response": "Brian" }
+  let incoming: JsonResponse = json::decode(&payload).unwrap();
+
+  // create a response with our random string, and pass in the string from the POST body
+  let response = JsonResponse { response: pick_response(incoming.response) };
+  let out = json::encode(&response).unwrap();
+
+  let content_type = "application/json".parse::<Mime>().unwrap();
+  Ok(Response::with((content_type, status::Ok, out)))
+}
+
+fn main() {
+  let mut router = Router::new();
+  router.get("/", handler, "index");
+  router.post("/", post_handler, "post_name");
+
+  Iron::new(router).http("localhost:3009").unwrap();
+}
+```
+
+## error
+
+Now everything's working, let's tidy up a bit. Using `unwrap()` is fine for prototyping, but not great for production code since any problems will cause the programme to panic, and show an ugly error message to the user. Sending a POST request without the `response` valuse set causes this error:
+
+```
+// attribute is supposed to be 'response' not 'name'
+curl -X POST -d '{ "name":"Bob" }' http://localhost:3009
+
+thread '<unnamed>' panicked at 'called `Result::unwrap()` on an `Err` value: MissingFieldError("response")', ../src/libcore\result.rs:788
+note: Run with `RUST_BACKTRACE=1` for a backtrace.
+```
+
+Similarly, if you send the correct values but invalid JSON, you also get an error:
+
+```
+// response needs to be in quotes
+curl -X POST -d '{ response:"Bob" }' http://localhost:3009
+
+thread '<unnamed>' panicked at 'called `Result::unwrap()` on an `Err` value: ParseError(SyntaxError("key must be a string", 1, 3))', ../src/libcore\result.rs:788
+```
+
+And sending non-JSON:
+
+```
+curl -X POST -d "Bob" http://localhost:3009
+
+thread '<unnamed>' panicked at 'called `Result::unwrap()` on an `Err` value: ParseError(SyntaxError("invalid syntax", 1, 1))', ../src/libcore\result.rs:788
+```
+
+We'll work through the `post_handler` function and update the `unwrap` calls to use `match`, so we can handle errors. If we encounter an error, we'll send that back via JSON, so the first thing to do is to update the `JsonResponse` struct to indicate if there is an error, and if so, what the error message was. It'd get a bit boring to type out the default success and error messages, so we'll also add a couple of functions to create `JsonResponse` structs:
+
+```
+#[derive(RustcEncodable, RustcDecodable)]
+struct JsonResponse {
+  response: String,
+  success: bool,
+  error_message: String
+}
+
+impl JsonResponse {
+  fn success(response: String) -> Self {
+    JsonResponse { response: response, success: true, error_message: "".to_string() }
+  }
+
+  fn error(msg: String) -> Self {
+    JsonResponse { response: "".to_string(), success: false, error_message: msg }
+  }
+}
+```
+
+We'll also need a new struct for incoming requests, since users don't need to send 'success' or 'error_message' fields:
+
+```
+#[derive(RustcDecodable)]
+struct JsonRequest {
+  response: String
+}
+```
+
+and then update all our existing calls to the struct.
+
+```
+fn handler(req: &mut Request) -> IronResult<Response> {
+  // use the success fn
+  let response = JsonResponse::success(response: pick_response("Brian".to_string()));
+  let out = json::encode(&response).unwrap();
+
+  let content_type = "application/json".parse::<Mime>().unwrap();
+  Ok(Response::with((content_type, status::Ok, out)))
+}
+
+fn post_handler(req: &mut Request) -> IronResult<Response> {
+  let mut payload = String::new();
+  req.body.read_to_string(&mut payload).unwrap();
+  println!("{:?}", payload);
+
+  // use the JsonRequest struct, since incoming will just have the name
+  let incoming: JsonRequest = json::decode(&payload).unwrap();
+
+  // update to use success fn
+  let response = JsonResponse::success(response: pick_response(incoming.response));
+  let out = json::encode(&response).unwrap();
+
+  let content_type = "application/json".parse::<Mime>().unwrap();
+  Ok(Response::with((content_type, status::Ok, out)))
+}
+```
+
 ## gnu header
 ## logging
 ## deploy/compile flag

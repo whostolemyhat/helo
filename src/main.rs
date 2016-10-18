@@ -11,20 +11,30 @@ use rustc_serialize::json;
 use router::Router;
 use std::io::Read;
 
+#[derive(RustcDecodable)]
+struct JsonRequest {
+  name: String
+}
+
 #[derive(RustcEncodable, RustcDecodable)]
 struct JsonResponse {
-  name: String
+  name: String,
+  success: bool,
+  error_message: String
+}
+
+impl JsonResponse {
+  fn success(name: String) -> Self {
+    JsonResponse { name: name, success: true, error_message: "".to_string() }
+  }
+
+  fn error(msg: String) -> Self {
+    JsonResponse { name: "".to_string(), success: false, error_message: msg }
+  }
 }
 
 fn pick_response(name: String) -> String {
   let num = rand::thread_rng().gen_range(1, 12);
-
-  // let response = match num {
-  //   1 => "Hello World!",
-  //   2 => "Did you see that ludicrous display last night?",
-  //   3 => "Nice weather for ducks",
-  //   _ => ""
-  // };
 
   let prefixes = vec!["Asylum", "Bell", "Black", "Capra", "Ceaseless", "Centipede", "Chaos", "Crossbreed", "Dark Sun", "Slayer", "Executioner", "Gaping", "Gravelord", "Iron", "Cinder", "Father", "Abyss", "Moonlight", "Sanctuary", "Stray", "Taurus", "Armoured", "Golden", "Crystal", "Giant", "Undead", "Giant Undead", "Hellkite", "Parasitic", "Prowling", "Prince", "Grey", "Maneater", "Iron", "Paladin", "Xanthous", "Marvellous", "Big Hat", "Black Iron", "Crestfallen", "Darkstalker", "Gravelord", "Hawkeye", "Kingseeker", "Lord\"s Blade", "Stone", "Silent", "Belfry", "Captain", "Emerald", "Grave Warden", "Lonesome", "Manscorpion", "Hag", "Mild Mannered", "Royal", "Sorcerer", "Sparkling", "Steady Hand", "Old", "Ruin", "Old Iron", "Covetous", "Baleful", "Prowling", "Ancient", "Burnt", "Slumbering", "Ivory", "Fume", "Sir", "Nameless", "Pilgrim", "Jester", "Ashen", "Abbess", "Rapacious", "Drifter", "Woodland Child", "Peculiar", "Holy", "Yellowfinger", "Longfinger", "Knight-Slayer", "Curse-Rotted", "Deacon", "High Lord", "Old Demon", "Pontiff", "Boreal", "Unbreakable", "Ringfinger"];
   let types = vec!["Demon", "Gargoyle", "Dragon", "Witch", "Golem", "Knight", "Wolf", "Butcher", "Tusk", "Golem", "Rat", "Hydra", "Wall Hugger", "Prince", "Slayer", "King", "Blacksmith", "Princess", "Merchant", "Scholar", "Oracle", "Guard", "Captain", "Chancellor", "Herald", "Housekeeper", "Laddersmith", "Manscorpion", "Warrior", "Trader", "Lord", "Sentinel", "Queen", "Ogre", "Denizen", "Seeker", "Watcher", "Devourer", "Outrider Knight", "High Priestess", "Mother"];
@@ -63,7 +73,8 @@ fn get_default_name() -> String {
 }
 
 fn handler(req: &mut Request) -> IronResult<Response> {
-  let response = JsonResponse { name: get_default_name() };
+  // let response = JsonResponse { name: get_default_name(), success: true, errorMessage: "" };
+  let response = JsonResponse::success(get_default_name());
   let out = json::encode(&response).unwrap();
 
   let content_type = "application/json".parse::<Mime>().unwrap();
@@ -73,7 +84,7 @@ fn handler(req: &mut Request) -> IronResult<Response> {
 fn get_handler(req: &mut Request) -> IronResult<Response> {
   let ref name = req.extensions.get::<Router>().unwrap().find("name").unwrap_or("/");
 
-  let response = JsonResponse { name: get_name((*name).to_string()) };
+  let response = JsonResponse::success(get_name((*name).to_string()));
   let out = json::encode(&response).unwrap();
 
   let content_type = "application/json".parse::<Mime>().unwrap();
@@ -82,16 +93,24 @@ fn get_handler(req: &mut Request) -> IronResult<Response> {
 
 fn post_handler(req: &mut Request) -> IronResult<Response> {
   let mut payload = String::new();
-  req.body.read_to_string(&mut payload).unwrap();
-  println!("{:?}", payload);
+  req.body.read_to_string(&mut payload).expect("No body in POST");
 
-  let incoming: JsonResponse = json::decode(&payload).unwrap();
-
-  let response = JsonResponse { name: get_name(incoming.name) };
-  let out = json::encode(&response).unwrap();
+  // let incoming: JsonResponse = json::decode(&payload).ok().expect("Invalid JSON in POST body");
+  let out = match json::decode(&payload) {
+    Err(e) => {
+      let response = JsonResponse::error(format!("Error parsing JSON: {:?}", e));
+      json::encode(&response).unwrap()
+    },
+    Ok(incoming) => {
+      let converted: JsonRequest = incoming;
+      let response = JsonResponse::success(get_name(converted.name));
+      json::encode(&response).unwrap()
+    }
+  };
 
   let content_type = "application/json".parse::<Mime>().unwrap();
   Ok(Response::with((content_type, status::Ok, out)))
+
 }
 
 fn main() {
@@ -101,4 +120,5 @@ fn main() {
   router.post("/", post_handler, "post_name");
 
   Iron::new(router).http("localhost:3009").unwrap();
+  println!("Listening on localhost:3009");
 }
