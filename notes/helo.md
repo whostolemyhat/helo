@@ -615,5 +615,8 @@ fn main() {
 
 Deploying is as simple as transferring your files to the server and running `cargo build --release`.
 
+
+# tests
+
 ## nginx
 https://medium.com/@rap2h/a-rust-powered-public-website-in-5-minutes-b682d8527b6b#.qss96nzf2

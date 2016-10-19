@@ -120,3 +120,39 @@ fn main() {
   println!("Listening on localhost:3009");
   Iron::new(router).http("localhost:3009").ok();
 }
+
+#[cfg(test)]
+mod test {
+  // extern crate hyper;
+
+  // use iron::prelude::*;
+  // use iron::method::Method;
+  // use iron::Url;
+  // use iron::Headers;
+  // use iron::TypeMap;
+  // use iron::request::Body;
+  // use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+
+  #[test]
+  fn generates_name() {
+    let name = super::pick_response("Brian".to_string());
+    assert!(name.len() > 0);
+  }
+
+  // #[test]
+  // fn default_handler() {
+  //   // make a fake request
+  //   let mut req: Request = Request {
+  //     url: Url::parse("http://example.com").unwrap(),
+  //     remote_addr: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 80),
+  //     headers: Headers::new(),
+  //     local_addr: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 80),
+  //     body: Body::new(),
+  //     method: Method::Get,
+  //     extensions: TypeMap::new()
+  //   };
+
+  //   let res = super::handler(&mut req);
+  //   println!("{:?}", res);
+  // }
+}
