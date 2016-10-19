@@ -4,34 +4,8 @@ extern crate rustc_serialize;
 extern crate router;
 
 use iron::prelude::*;
-use iron::status;
-use iron::mime::Mime;
 use rand::Rng;
-use rustc_serialize::json;
 use router::Router;
-use std::io::Read;
-
-#[derive(RustcDecodable)]
-struct JsonRequest {
-  name: String
-}
-
-#[derive(RustcEncodable, RustcDecodable)]
-struct JsonResponse {
-  name: String,
-  success: bool,
-  error_message: String
-}
-
-impl JsonResponse {
-  fn success(name: String) -> Self {
-    JsonResponse { name: name, success: true, error_message: "".to_string() }
-  }
-
-  fn error(msg: String) -> Self {
-    JsonResponse { name: "".to_string(), success: false, error_message: msg }
-  }
-}
 
 fn pick_response(name: String) -> String {
   let num = rand::thread_rng().gen_range(1, 12);
@@ -72,50 +46,82 @@ fn get_default_name() -> String {
   pick_response("Brian".to_string())
 }
 
-fn handler(req: &mut Request) -> IronResult<Response> {
-  // let response = JsonResponse { name: get_default_name(), success: true, errorMessage: "" };
-  let response = JsonResponse::success(get_default_name());
-  let out = json::encode(&response).expect("Error encoding response");
+mod handlers {
+  use iron::prelude::*;
+  use iron::status;
+  use iron::mime::Mime;
+  use rustc_serialize::json;
+  use std::io::Read;
+  use router::Router;
+  use super::{ get_name, get_default_name };
 
-  let content_type = "application/json".parse::<Mime>().expect("Failed to parse content type");
-  Ok(Response::with((content_type, status::Ok, out)))
-}
+  #[derive(RustcDecodable)]
+  struct JsonRequest {
+    name: String
+  }
 
-fn get_handler(req: &mut Request) -> IronResult<Response> {
-  let ref name = req.extensions.get::<Router>().unwrap().find("name").unwrap_or("/");
-  let response = JsonResponse::success(get_name((*name).to_string()));
-  let out = json::encode(&response).expect("Error encoding response");
+  #[derive(RustcEncodable, RustcDecodable)]
+  struct JsonResponse {
+    name: String,
+    success: bool,
+    error_message: String
+  }
 
-  let content_type = "application/json".parse::<Mime>().expect("Failed to parse content type");
-  Ok(Response::with((content_type, status::Ok, out)))
-}
-
-fn post_handler(req: &mut Request) -> IronResult<Response> {
-  let mut payload = String::new();
-  req.body.read_to_string(&mut payload).expect("Failed to read request body");
-
-  // let incoming: JsonResponse = json::decode(&payload).ok().expect("Invalid JSON in POST body");
-  let out = match json::decode(&payload) {
-    Err(e) => {
-      let response = JsonResponse::error(format!("Error parsing JSON: {:?}", e));
-      json::encode(&response).ok().expect("Error encoding response")
-    },
-    Ok(incoming) => {
-      let converted: JsonRequest = incoming;
-      let response = JsonResponse::success(get_name(converted.name));
-      json::encode(&response).expect("Error encoding response")
+  impl JsonResponse {
+    fn success(name: String) -> Self {
+      JsonResponse { name: name, success: true, error_message: "".to_string() }
     }
-  };
 
-  let content_type = "application/json".parse::<Mime>().expect("Failed to parse content type");
-  Ok(Response::with((content_type, status::Ok, out)))
+    fn error(msg: String) -> Self {
+      JsonResponse { name: "".to_string(), success: false, error_message: msg }
+    }
+  }
+
+  pub fn default(_: &mut Request) -> IronResult<Response> {
+    // let response = JsonResponse { name: get_default_name(), success: true, errorMessage: "" };
+    let response = JsonResponse::success(get_default_name());
+    let out = json::encode(&response).expect("Error encoding response");
+
+    let content_type = "application/json".parse::<Mime>().expect("Failed to parse content type");
+    Ok(Response::with((content_type, status::Ok, out)))
+  }
+
+  pub fn get_handler(req: &mut Request) -> IronResult<Response> {
+    let ref name = req.extensions.get::<Router>().unwrap().find("name").unwrap_or("/");
+    let response = JsonResponse::success(get_name((*name).to_string()));
+    let out = json::encode(&response).expect("Error encoding response");
+
+    let content_type = "application/json".parse::<Mime>().expect("Failed to parse content type");
+    Ok(Response::with((content_type, status::Ok, out)))
+  }
+
+  pub fn post_handler(req: &mut Request) -> IronResult<Response> {
+    let mut payload = String::new();
+    req.body.read_to_string(&mut payload).expect("Failed to read request body");
+
+    // let incoming: JsonResponse = json::decode(&payload).ok().expect("Invalid JSON in POST body");
+    let out = match json::decode(&payload) {
+      Err(e) => {
+        let response = JsonResponse::error(format!("Error parsing JSON: {:?}", e));
+        json::encode(&response).ok().expect("Error encoding response")
+      },
+      Ok(incoming) => {
+        let converted: JsonRequest = incoming;
+        let response = JsonResponse::success(get_name(converted.name));
+        json::encode(&response).expect("Error encoding response")
+      }
+    };
+
+    let content_type = "application/json".parse::<Mime>().expect("Failed to parse content type");
+    Ok(Response::with((content_type, status::Ok, out)))
+  }
 }
 
 fn main() {
   let mut router = Router::new();
-  router.get("/", handler, "index");
-  router.get("/:name", get_handler, "name");
-  router.post("/", post_handler, "post_name");
+  router.get("/", handlers::default, "index");
+  router.get("/:name", handlers::get_handler, "name");
+  router.post("/", handlers::post_handler, "post_name");
 
   println!("Listening on localhost:3009");
   Iron::new(router).http("localhost:3009").ok();
@@ -123,6 +129,12 @@ fn main() {
 
 #[cfg(test)]
 mod test {
+  #[test]
+  fn generates_name() {
+    let name = super::pick_response("Brian".to_string());
+    assert!(name.len() > 0);
+  }
+
   // extern crate hyper;
 
   // use iron::prelude::*;
@@ -132,12 +144,6 @@ mod test {
   // use iron::TypeMap;
   // use iron::request::Body;
   // use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-
-  #[test]
-  fn generates_name() {
-    let name = super::pick_response("Brian".to_string());
-    assert!(name.len() > 0);
-  }
 
   // #[test]
   // fn default_handler() {

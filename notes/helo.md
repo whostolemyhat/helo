@@ -102,11 +102,11 @@ Run via `cargo run` - if all goes well, you'll see a string printed in the termi
 
 ![What was Wenger thinking, sending Walcott on that early?](random-string.png)
 
-Now we need to transform the random string into JSON so we can send it. There's a choice of crates to use here: `rustc-serialize` and `serde-json`. `rustc-serialize` is an older option which isn't very active, while `serde` is actively developed and is the de facto standard for Rust serialisation. However, the downside of `serde` is that you'll need touse the nightly version of Rust, at least until custom traits have been added to the stable branch. [Here's a bit of a comparison between the two.](https://www.reddit.com/r/rust/comments/3v4ktz/differences_between_serde_and_rustc_serialize/).
+Now we need to transform the random string into JSON so we can send it. There's a choice of crates to use here: `rustc-serialize` and `serde-json`. `rustc-serialize` is an older option which isn't very active, while `serde` is actively developed and is the de facto standard for Rust serialisation. However, the downside of `serde` is that you'll need to use the nightly version of Rust, at least until custom traits have been added to the stable branch. [Here's a bit of a comparison between the two.](https://www.reddit.com/r/rust/comments/3v4ktz/differences_between_serde_and_rustc_serialize/).
 
-I'm going to use `rustc-serialize`, since I've found using `serde` a huge pain on Windows.
+I'm going to use `rustc-serialize`, since I've used it before, and found using `serde` a huge pain on Windows.
 
-### add serde
+### add json
 We need the `rustc-serialize` crate, so add it to your dependencies:
 
 ``` Cargo.toml
@@ -610,13 +610,11 @@ fn main() {
 }
 ```
 
-
 ## deploy
 
-Deploying is as simple as transferring your files to the server and running `cargo build --release`.
-
-
-# tests
+1. Build on dev machine (Windows -> Linux?)
+2. Build on server (slow prod machine down)
+3. Create VM, build and transfer to server (faff)
 
 ## nginx
 https://medium.com/@rap2h/a-rust-powered-public-website-in-5-minutes-b682d8527b6b#.qss96nzf2
