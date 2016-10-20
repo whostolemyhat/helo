@@ -78,7 +78,6 @@ mod handlers {
   }
 
   pub fn default(_: &mut Request) -> IronResult<Response> {
-    // let response = JsonResponse { name: get_default_name(), success: true, errorMessage: "" };
     let response = JsonResponse::success(get_default_name());
     let out = json::encode(&response).expect("Error encoding response");
 

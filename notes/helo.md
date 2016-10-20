@@ -610,11 +610,72 @@ fn main() {
 }
 ```
 
-## deploy
+## Deploying
 
-1. Build on dev machine (Windows -> Linux?)
-2. Build on server (slow prod machine down)
-3. Create VM, build and transfer to server (faff)
+To deploy, there are a few options for Rust:
 
-## nginx
-https://medium.com/@rap2h/a-rust-powered-public-website-in-5-minutes-b682d8527b6b#.qss96nzf2
+1. Build on dev machine
+2. Build on server
+3. Create VM, build and transfer to server
+
+There are advantages and disadvantages to all three approaches: building on your development machine is simplest, but if your dev operating system isn't the same as your production server, the compiled programme probably won't work. Transferring the files to your server and building there will make sure that the compiled version will run properly, but will use up resources on your production server, which could then cause problems if you're using a low-powered server. Finally, the most robust but most involved option is to create a VM or container with the correct OS and dependencies, build in there then transfer the compiled programme to your server.
+
+Whichever option you choose, make sure you run `cargo build --release` to ensure the compiled programme is optimised.
+
+## Nginx
+
+Since Iron, and most Rust servers, are still quite immature, it's a good idea to use a well-tested and robust server as a [reverse-proxy](https://www.nginx.com/resources/glossary/reverse-proxy-server/) in front of your Rust programme. This basically means that a server listens for all incoming requests, passes the request to Rust, takes the output and displays it to the user. This is especially useful in this case, since it means we can use SSL and gzip and know that we're not going to run into any problems.
+
+I use Nginx as the proxy; I'm not going to go through the whole Nginx installation and setup, but there's a [good post on that here](https://medium.com/@rap2h/a-rust-powered-public-website-in-5-minutes-b682d8527b6b#.qss96nzf2). The key part is to set up the proxy to pass traffic to our Rust server:
+
+```
+location / {
+    proxy_set_header Host $http_host;
+    proxy_pass http://localhost:3009; // this needs to match the address set in Iron
+    proxy_redirect off;
+}
+```
+This will listen on the default port (80) for any traffic and send it to our Rust programme, which is listening for port 3009. The Rust programme can now only be accessed via Nginx unless you've opened that port on your server.
+
+
+Nginx also makes it easy to [use SSL via Let's Encrypt](https://www.digitalocean.com/community/tutorials/how-to-secure-nginx-with-let-s-encrypt-on-ubuntu-14-04), so you can secure your API easily.
+
+The final step is to start the Rust programme, and make sure it keeps running by using `supervisor`:
+
+```
+apt-get install supervisor
+```
+
+Set `/etc/supervisor/conf.d/[your programme name].conf`
+
+```
+[program:yourname]
+command=/path/to/your/compiled/Rust/app
+autostart=true
+autorestart=true
+stderr_logfile=/var/log/name.err.log
+stdout_logfile=/var/log/name.out.log
+```
+
+```
+service supervisor restart
+```
+
+## conclusion
+docs lacking - had to google a fair amount (and came across brson's detailed notes, which ended up being exactly what I was doing!)
+https://github.com/brson/httptest
+
+getting params from get or post is really messy in iron:
+```
+// get
+let ref name = req.extensions.get::<Router>().unwrap().find("name").unwrap_or("/");
+
+// post
+req.body.read_to_string(&mut payload).expect("Failed to read request body");
+```
+
+compare with nickel: https://github.com/nickel-org/nickel.rs/blob/master/examples/json.rs
+
+notes: https://github.com/flosse/rust-web-framework-comparison
+
+next: build slightly more complex - frontend, db, nickel?
