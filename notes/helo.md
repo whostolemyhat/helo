@@ -626,7 +626,13 @@ Whichever option you choose, make sure you run `cargo build --release` to ensure
 
 Since Iron, and most Rust servers, are still quite immature, it's a good idea to use a well-tested and robust server as a [reverse-proxy](https://www.nginx.com/resources/glossary/reverse-proxy-server/) in front of your Rust programme. This basically means that a server listens for all incoming requests, passes the request to Rust, takes the output and displays it to the user. This is especially useful in this case, since it means we can use SSL and gzip and know that we're not going to run into any problems.
 
-I use Nginx as the proxy; I'm not going to go through the whole Nginx installation and setup, but there's a [good post on that here](https://medium.com/@rap2h/a-rust-powered-public-website-in-5-minutes-b682d8527b6b#.qss96nzf2). The key part is to set up the proxy to pass traffic to our Rust server:
+We'll use Nginx as our reverse-proxy: this assumes you're serving on Ubuntu/other Linux.
+
+```
+apt-get install nginx
+```
+
+Edit the `location` block in `/etc/nginx/sites-enabled/default`; the key part is to set up the proxy to pass traffic to our Rust server:
 
 ```
 location / {
@@ -635,10 +641,14 @@ location / {
     proxy_redirect off;
 }
 ```
+
 This will listen on the default port (80) for any traffic and send it to our Rust programme, which is listening for port 3009. The Rust programme can now only be accessed via Nginx unless you've opened that port on your server.
 
+Reload Nginx with `service nginx restart`.
 
-Nginx also makes it easy to [use SSL via Let's Encrypt](https://www.digitalocean.com/community/tutorials/how-to-secure-nginx-with-let-s-encrypt-on-ubuntu-14-04), so you can secure your API easily.
+Nginx also makes it easy to [use SSL via Let's Encrypt](https://www.digitalocean.com/community/tutorials/how-to-secure-nginx-with-let-s-encrypt-on-ubuntu-14-04), so it's simple to run your API over HTTPS.
+
+## Supervisor
 
 The final step is to start the Rust programme, and make sure it keeps running by using `supervisor`:
 
@@ -660,6 +670,10 @@ stdout_logfile=/var/log/name.out.log
 ```
 service supervisor restart
 ```
+
+Supervisor runs your programme when your server starts, and makes sure it starts up if you restart your server.
+
+You should now be able to visit your server IP address and see the JSON response!
 
 ## conclusion
 docs lacking - had to google a fair amount (and came across brson's detailed notes, which ended up being exactly what I was doing!)

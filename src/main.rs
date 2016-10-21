@@ -35,7 +35,7 @@ mod name_gen {
       9 => format!("{} {}, {} {}", prefix, name, name_type, suffix),
       10 => format!("{}, {} {}", name, nickname, name_type),
       11 => format!("{} {}", name_type, name),
-      _ => format!("{}", name)
+      _ => unreachable!()
     };
 
     response.to_string()
