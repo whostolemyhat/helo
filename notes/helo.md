@@ -1,7 +1,15 @@
-create a new Rust project with
-`cargo new hello --bin`
+Writing a basic JSON response web server in Rust using Iron.
 
-`--bin` flag tells Cargo to create a project which will compile to a binary file, rather than a library.
+I wanted to use Rust in web development, so decided to build a small server which responded to Get or Post requests with a JSON string, optionally taking a parameter from the request. I decided to use the [Iron framework](http://ironframework.io/) simply because there seemed to be [a fair few articles about it](http://www.arewewebyet.org/) and it looked straightforward enough at first glance.
+
+The full code I'll cover is [in a gist here](https://gist.github.com/whostolemyhat/5a352f9494009b0b1f7059ade2242389). A modified version of this code is running a [Dark Souls name generator](https://helo.randomnumberpicker.co.uk/) - [change the name via get](https://helo.randomnumberpicker.co.uk/Sandra) or post - the full code of which [is on Github](https://github.com/whostolemyhat/helo).
+
+## Getting started
+
+Create a new Rust project with
+```cargo new hello --bin```
+
+The `--bin` flag tells Cargo to create a project which will compile to a binary file, rather than a library.
 
 Add [Iron](https://crates.io/crates/iron) to your dependencies in 'Cargo.toml':
 
@@ -28,7 +36,7 @@ fn main() {
 ![Terminal output](first-run.png)
 ![Hello!](first-output.png)
 
-## json
+## JSON support
 
 Next, we'll change our response from text to JSON. Based on the [content type example](https://github.com/iron/iron/blob/master/examples/content_type.rs), add the `Mime` import, and update the response:
 
@@ -106,7 +114,8 @@ Now we need to transform the random string into JSON so we can send it. There's 
 
 I'm going to use `rustc-serialize`, since I've used it before, and found using `serde` a huge pain on Windows.
 
-### add json
+### Serialisation
+
 We need the `rustc-serialize` crate, so add it to your dependencies:
 
 ``` Cargo.toml
@@ -676,20 +685,34 @@ Supervisor runs your programme when your server starts, and makes sure it starts
 You should now be able to visit your server IP address and see the JSON response!
 
 ## conclusion
-docs lacking - had to google a fair amount (and came across brson's detailed notes, which ended up being exactly what I was doing!)
-https://github.com/brson/httptest
 
-getting params from get or post is really messy in iron:
+I found Iron quite easy to use, although [the documentation was a bit lacking](https://github.com/iron/iron/tree/master/examples) past the "Hello World". A handy example I found was [brson's detailed notes](https://github.com/brson/httptest) on setting up almost exactly what I was doing, which was useful in putting all the parts together.
+
+Getting parameters from a request seems pretty clumsy in Iron:
+
 ```
-// get
-let ref name = req.extensions.get::<Router>().unwrap().find("name").unwrap_or("/");
+fn handler(req: &mut Request) -> IronResult<Response> {
+  // get
+  let ref name = req.extensions.get::<Router>().unwrap().find("name").unwrap_or("/");
 
-// post
-req.body.read_to_string(&mut payload).expect("Failed to read request body");
+  // post
+  req.body.read_to_string(&mut payload).expect("Failed to read request body");
+
+  ...
+}
 ```
 
-compare with nickel: https://github.com/nickel-org/nickel.rs/blob/master/examples/json.rs
+[Compared with Nickel](https://github.com/nickel-org/nickel.rs/blob/master/examples/json.rs), it's pretty verbose:
 
-notes: https://github.com/flosse/rust-web-framework-comparison
+``` // Nickel example
+server.get("/:first/:last", middleware! { |req|
+    let first_name = req.param("first").unwrap();
+    let last_name = req.param("last").unwrap();
 
-next: build slightly more complex - frontend, db, nickel?
+    ...
+});
+```
+
+## Next steps
+
+I think the next step is to build something slightly more complex, such as an API with a database behind it and with some sort of frontend. There's a [list of web development articles using Rust](https://github.com/flosse/rust-web-framework-comparison) here, which looks pretty handy.

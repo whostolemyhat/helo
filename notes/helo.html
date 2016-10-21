@@ -1,0 +1,730 @@
+<p>Writing a basic JSON response web server in Rust using Iron.</p>
+
+<p>I wanted to use Rust in web development, so decided to build a small server which responded to Get or Post requests with a JSON string, optionally taking a parameter from the request. I decided to use the <a href="http://ironframework.io/">Iron framework</a> simply because there seemed to be <a href="http://www.arewewebyet.org/">a fair few articles about it</a> and it looked straightforward enough at first glance.</p>
+
+<p>The full code I&#39;ll cover is <a href="https://gist.github.com/whostolemyhat/5a352f9494009b0b1f7059ade2242389">in a gist here</a>. A modified version of this code is running a <a href="https://helo.randomnumberpicker.co.uk/">Dark Souls name generator</a> - <a href="https://helo.randomnumberpicker.co.uk/Sandra">change the name via get</a> or post - the full code of which <a href="https://github.com/whostolemyhat/helo">is on Github</a>.</p>
+
+<h2>Getting started</h2>
+
+<p>Create a new Rust project with
+<code>cargo new hello --bin</code></p>
+
+<p>The <code>--bin</code> flag tells Cargo to create a project which will compile to a binary file, rather than a library.</p>
+
+<p>Add <a href="https://crates.io/crates/iron">Iron</a> to your dependencies in &#39;Cargo.toml&#39;:</p>
+
+<p><code>
+[dependencies]
+iron = &quot;0.4.0&quot;
+</code></p>
+
+<p>Update <code>/src/main.rs</code> with the code from Iron&#39;s <a href="http://ironframework.io/doc/iron/#hello-world">&#39;Hello world&#39; example</a>, and run via <code>cargo run</code>. Cargo will install Iron and it&#39;s dependencies, so this may take some time, then compile and run the &#39;hello world&#39; code.</p>
+
+<p><code></code>`
+extern crate iron;</p>
+
+<p>use iron::prelude::*;
+use iron::status;</p>
+
+<p>fn main() {
+  Iron::new(|_: &amp;mut Request| {
+    Ok(Response::with((status::Ok, &quot;Hello world!&quot;)))
+  }).http(&quot;localhost:3009&quot;).unwrap();
+}
+<code></code>`</p>
+
+<p><img alt="Terminal output" src="first-run.png"/>
+<img alt="Hello!" src="first-output.png"/></p>
+
+<h2>JSON support</h2>
+
+<p>Next, we&#39;ll change our response from text to JSON. Based on the <a href="https://github.com/iron/iron/blob/master/examples/content_type.rs">content type example</a>, add the <code>Mime</code> import, and update the response:</p>
+
+<p><code></code>`
+extern crate iron;</p>
+
+<p>use iron::prelude::*;
+use iron::status;
+use iron::mime::Mime;</p>
+
+<p>fn main() {
+  Iron::new(|<em>: &amp;mut Request| {
+    let content</em>type = &quot;application/json&quot;.parse::&lt;Mime&gt;().unwrap();</p>
+
+<pre><code>Ok(Response::with((content_type, status::Ok, &quot;{ response: \&quot;Hello world!\&quot; }&quot;)))</code></pre>
+
+<p>  }).http(&quot;localhost:3009&quot;).unwrap();
+}
+<code></code>`</p>
+
+<p>Let&#39;s change the response so it selects a random string. Add the &#39;rand&#39; crate to the dependencies:</p>
+
+<p><code> Cargo.toml
+[dependencies]
+iron = &quot;0.4.0&quot;
+rand = &quot;0.3&quot;
+</code></p>
+
+<p>then create a function in <code>main.rs</code> which picks a string at random:</p>
+
+<p><code></code>`
+extern crate rand;      // reference the random crate
+extern crate iron;</p>
+
+<p>use iron::prelude::*;
+use iron::status;
+use iron::mime::Mime;
+use rand::Rng;        // use random number generator</p>
+
+<p>// pick a string at random
+fn pick_response() -&gt; String {</p>
+
+<p>  // generate a number between 1 and 3 (4 is exclusive upper-bound)
+  let num = rand::thread<em>rng().gen</em>range(1, 4);</p>
+
+<p>  // match the random number and pick a random string
+  let response = match num {
+    1 =&gt; &quot;Hello World!&quot;,
+    2 =&gt; &quot;Did you see that ludicrous display last night?&quot;,
+    3 =&gt; &quot;Nice weather for ducks&quot;,
+    _ =&gt; &quot;&quot;     // match is exhaustive
+  };</p>
+
+<p>  // return our string
+  response.to_string()
+}</p>
+
+<p>fn main() {
+  // check it&#39;s working - this will appear in your terminal
+  println!(&quot;{:?}&quot;, pick_response());</p>
+
+<p>  Iron::new(|<em>: &amp;mut Request| {
+    let content</em>type = &quot;application/json&quot;.parse::&lt;Mime&gt;().unwrap();</p>
+
+<pre><code>Ok(Response::with((content_type, status::Ok, &quot;{ response: \&quot;Hello world!\&quot; }&quot;)))</code></pre>
+
+<p>  }).http(&quot;localhost:3009&quot;).unwrap();
+}</p>
+
+<p><code></code>`</p>
+
+<p>Run via <code>cargo run</code> - if all goes well, you&#39;ll see a string printed in the terminal:</p>
+
+<p><img alt="What was Wenger thinking, sending Walcott on that early?" src="random-string.png"/></p>
+
+<p>Now we need to transform the random string into JSON so we can send it. There&#39;s a choice of crates to use here: <code>rustc-serialize</code> and <code>serde-json</code>. <code>rustc-serialize</code> is an older option which isn&#39;t very active, while <code>serde</code> is actively developed and is the de facto standard for Rust serialisation. However, the downside of <code>serde</code> is that you&#39;ll need to use the nightly version of Rust, at least until custom traits have been added to the stable branch. <a href="https://www.reddit.com/r/rust/comments/3v4ktz/differences_between_serde_and_rustc_serialize/">Here&#39;s a bit of a comparison between the two.</a>.</p>
+
+<p>I&#39;m going to use <code>rustc-serialize</code>, since I&#39;ve used it before, and found using <code>serde</code> a huge pain on Windows.</p>
+
+<h3>Serialisation</h3>
+
+<p>We need the <code>rustc-serialize</code> crate, so add it to your dependencies:</p>
+
+<p><code> Cargo.toml
+[dependencies]
+iron = &quot;0.4.0&quot;
+rand = &quot;0.3&quot;
+rustc-serialize = &quot;0.3&quot;
+</code></p>
+
+<p>aaand update the imports in <code>main.rs</code>:</p>
+
+<p><code></code>`main.rs
+extern crate rand;
+extern crate iron;
+extern crate rustc_serialize;</p>
+
+<p>use iron::prelude::*;
+use iron::status;
+use iron::mime::Mime;
+use rand::Rng;
+use rustc_serialize::json;
+<code></code>`</p>
+
+<p>We&#39;ll create a struct which holds the response string, and use <code>serde</code> to convert it into JSON, which we&#39;ll then send as a response.</p>
+
+<p>Create a struct which has one string field, and initialise it in <code>main()</code>:</p>
+
+<p><code></code>`main.rs
+struct JsonResponse {
+  response: String
+}</p>
+
+<p>fn main() {
+  println!(&quot;{:?}&quot;, pick_response());</p>
+
+<p>  Iron::new(|<em>: &amp;mut Request| {
+    let content</em>type = &quot;application/json&quot;.parse::&lt;Mime&gt;().unwrap();</p>
+
+<pre><code>// create the response
+let response = JsonResponse { response: pick_response() };
+
+// convert the response struct to JSON
+let out = json::encode(&amp;response).unwrap();
+
+Ok(Response::with((content_type, status::Ok, out)))</code></pre>
+
+<p>  }).http(&quot;localhost:3009&quot;).unwrap();
+}</p>
+
+<p><code></code>`</p>
+
+<p>If you try to run this, you&#39;ll get an error complaining that our struct doesn&#39;t satisfy the <code>Encodable</code> trait:</p>
+
+<p><img alt="" src="trait.png"/></p>
+
+<p>so add the appropriate derive to our struct:</p>
+
+<p><code></code>`main.rs</p>
+
+<h1>[derive(RustcEncodeable)]</h1>
+
+<p>struct JsonResponse {
+  response: String
+}
+<code></code>`
+and run:</p>
+
+<p><img alt="" src="random-json.png"/></p>
+
+<h2>get and post</h2>
+
+<p>Let&#39;s edit the reponse so we can take a parameter from get or post, and display it back. Update <code>pick_response</code> so it takes a name, and returns a formatted string:</p>
+
+<p><code></code>`
+fn pick<em>response(name: String) -&gt; String {
+  let num = rand::thread</em>rng().gen_range(1, 4);</p>
+
+<p>  let response = match num {
+    1 =&gt; format!(&quot;Hello {}!&quot;, name),
+    2 =&gt; format!(&quot;Did you see that ludicrous display last night, {}?&quot;, name),
+    3 =&gt; format!(&quot;Nice weather for ducks, isn&#39;t it {}&quot;, name),
+    _ =&gt; format!(&quot;&quot;)     // match is exhaustive
+  };</p>
+
+<p>  response.to_string()
+}
+<code></code>`</p>
+
+<p>We also need to install &#39;router&#39; so we have a way of defining routes in Iron:</p>
+
+<p><code>
+[dependencies]
+iron = &quot;0.4.0&quot;
+rustc-serialize = &quot;0.3&quot;
+rand = &quot;0.3&quot;
+router = &quot;0.4.0&quot;
+</code></p>
+
+<p>Now update <code>main()</code> to seperate the route handler</p>
+
+<p><code></code>`
+extern crate router;</p>
+
+<p>use router::Router;
+use std::io::Read;</p>
+
+<p>fn handler(req: &amp;mut Request) -&gt; IronResult&lt;Response&gt; {
+  let response = JsonResponse { response: pick<em>response(&quot;Brian&quot;.to</em>string()) };
+  let out = json::encode(&amp;response).unwrap();</p>
+
+<p>  let content<em>type = &quot;application/json&quot;.parse::&lt;Mime&gt;().unwrap();
+  Ok(Response::with((content</em>type, status::Ok, out)))
+}</p>
+
+<p>fn main() {
+  let mut router = Router::new();
+  router.get(&quot;/&quot;, handler, &quot;index&quot;);</p>
+
+<p>  Iron::new(router).http(&quot;localhost:3009&quot;).unwrap();
+}
+<code></code>`</p>
+
+<p>This moves the handler for <code>GET</code> requests to the index into its own function, which now also passes a string to <code>pick_response</code> since there are no parameters in the default request. Adding a route for a <code>POST</code> request is very similar:</p>
+
+<p><code></code>`
+// make sure we can encode and decode from this struct (for post)</p>
+
+<h1>[derive(RustcEncodable, RustcDecodable)]</h1>
+
+<p>struct JsonResponse {
+  response: String
+}</p>
+
+<p>fn handler(req: &amp;mut Request) -&gt; IronResult&lt;Response&gt; {
+  let response = JsonResponse { response: pick<em>response(&quot;Brian&quot;.to</em>string()) };
+  let out = json::encode(&amp;response).unwrap();</p>
+
+<p>  let content<em>type = &quot;application/json&quot;.parse::&lt;Mime&gt;().unwrap();
+  Ok(Response::with((content</em>type, status::Ok, out)))
+}</p>
+
+<p>fn post_handler(req: &amp;mut Request) -&gt; IronResult&lt;Response&gt; {
+  let mut payload = String::new();</p>
+
+<p>  // read the POST body
+  req.body.read<em>to</em>string(&amp;mut payload).unwrap();
+  println!(&quot;{:?}&quot;, payload);</p>
+
+<p>  // we&#39;re expecting the POST to match the format of our JsonResponse struct
+  // ie { &quot;response&quot;: &quot;Brian&quot; }
+  let incoming: JsonResponse = json::decode(&amp;payload).unwrap();</p>
+
+<p>  // create a response with our random string, and pass in the string from the POST body
+  let response = JsonResponse { response: pick_response(incoming.response) };
+  let out = json::encode(&amp;response).unwrap();</p>
+
+<p>  let content<em>type = &quot;application/json&quot;.parse::&lt;Mime&gt;().unwrap();
+  Ok(Response::with((content</em>type, status::Ok, out)))
+}</p>
+
+<p>fn main() {
+  let mut router = Router::new();
+  router.get(&quot;/&quot;, handler, &quot;index&quot;);
+  router.post(&quot;/&quot;, post<em>handler, &quot;post</em>name&quot;);</p>
+
+<p>  Iron::new(router).http(&quot;localhost:3009&quot;).unwrap();
+}
+<code></code>`</p>
+
+<p>Now, when we visit the homepage, we get a random phrase with &quot;Brian&quot;:</p>
+
+<p><img alt="" src="name-get.png"/></p>
+
+<p>and with a POST request, we get a response with the name we send:</p>
+
+<p><code>
+curl -X POST -d &#39;{ &quot;response&quot;:&quot;Bob&quot; }&#39; http://localhost:3009
+{&quot;response&quot;:&quot;Did you see that ludicrous display last night, Bob?&quot;}
+</code></p>
+
+<p>Full programme so far:</p>
+
+<p><code></code>`
+extern crate rand;
+extern crate iron;
+extern crate rustc_serialize;
+extern crate router;</p>
+
+<p>use iron::prelude::*;
+use iron::status;
+use iron::mime::Mime;
+use rand::Rng;
+use rustc_serialize::json;
+use router::Router;
+use std::io::Read;</p>
+
+<h1>[derive(RustcEncodeable)]</h1>
+
+<p>struct JsonResponse {
+  response: String
+}</p>
+
+<p>fn pick<em>response(name: String) -&gt; String {
+  let num = rand::thread</em>rng().gen_range(1, 4);</p>
+
+<p>  let response = match num {
+    1 =&gt; format!(&quot;Hello {}!&quot;, name),
+    2 =&gt; format!(&quot;Did you see that ludicrous display last night, {}?&quot;, name),
+    3 =&gt; format!(&quot;Nice weather for ducks, isn&#39;t it {}&quot;, name),
+    _ =&gt; format!(&quot;&quot;)     // match is exhaustive
+  };</p>
+
+<p>  response.to_string()
+}</p>
+
+<p>fn handler(req: &amp;mut Request) -&gt; IronResult&lt;Response&gt; {
+  let response = JsonResponse { response: pick<em>response(&quot;Brian&quot;.to</em>string()) };
+  let out = json::encode(&amp;response).unwrap();</p>
+
+<p>  let content<em>type = &quot;application/json&quot;.parse::&lt;Mime&gt;().unwrap();
+  Ok(Response::with((content</em>type, status::Ok, out)))
+}</p>
+
+<p>fn post_handler(req: &amp;mut Request) -&gt; IronResult&lt;Response&gt; {
+  let mut payload = String::new();</p>
+
+<p>  // read the POST body
+  req.body.read<em>to</em>string(&amp;mut payload).unwrap();
+  println!(&quot;{:?}&quot;, payload);</p>
+
+<p>  // we&#39;re expecting the POST to match the format of our JsonResponse struct
+  // ie { &quot;response&quot;: &quot;Brian&quot; }
+  let incoming: JsonResponse = json::decode(&amp;payload).unwrap();</p>
+
+<p>  // create a response with our random string, and pass in the string from the POST body
+  let response = JsonResponse { response: pick_response(incoming.response) };
+  let out = json::encode(&amp;response).unwrap();</p>
+
+<p>  let content<em>type = &quot;application/json&quot;.parse::&lt;Mime&gt;().unwrap();
+  Ok(Response::with((content</em>type, status::Ok, out)))
+}</p>
+
+<p>fn main() {
+  let mut router = Router::new();
+  router.get(&quot;/&quot;, handler, &quot;index&quot;);
+  router.post(&quot;/&quot;, post<em>handler, &quot;post</em>name&quot;);</p>
+
+<p>  Iron::new(router).http(&quot;localhost:3009&quot;).unwrap();
+}
+<code></code>`</p>
+
+<h2>error</h2>
+
+<p>Now everything&#39;s working, let&#39;s tidy up a bit. Using <code>unwrap()</code> is fine for prototyping, but not great for production code since any problems will cause the programme to panic, and show an ugly error message to the user. Sending a POST request without the <code>response</code> valuse set causes this error:</p>
+
+<p><code></code>`
+// attribute is supposed to be &#39;response&#39; not &#39;name&#39;
+curl -X POST -d &#39;{ &quot;name&quot;:&quot;Bob&quot; }&#39; http://localhost:3009</p>
+
+<p>thread &#39;&lt;unnamed&gt;&#39; panicked at &#39;called <code>Result::unwrap()</code> on an <code>Err</code> value: MissingFieldError(&quot;response&quot;)&#39;, ../src/libcore\result.rs:788
+note: Run with <code>RUST_BACKTRACE=1</code> for a backtrace.
+<code></code>`</p>
+
+<p>Similarly, if you send the correct values but invalid JSON, you also get an error:</p>
+
+<p><code></code>`
+// response needs to be in quotes
+curl -X POST -d &#39;{ response:&quot;Bob&quot; }&#39; http://localhost:3009</p>
+
+<p>thread &#39;&lt;unnamed&gt;&#39; panicked at &#39;called <code>Result::unwrap()</code> on an <code>Err</code> value: ParseError(SyntaxError(&quot;key must be a string&quot;, 1, 3))&#39;, ../src/libcore\result.rs:788
+<code></code>`</p>
+
+<p>And sending non-JSON:</p>
+
+<p><code></code>`
+curl -X POST -d &quot;Bob&quot; http://localhost:3009</p>
+
+<p>thread &#39;&lt;unnamed&gt;&#39; panicked at &#39;called <code>Result::unwrap()</code> on an <code>Err</code> value: ParseError(SyntaxError(&quot;invalid syntax&quot;, 1, 1))&#39;, ../src/libcore\result.rs:788
+<code></code>`</p>
+
+<p>We&#39;ll work through the <code>post_handler</code> function and update the <code>unwrap</code> calls to use <code>match</code>, so we can handle errors. If we encounter an error, we&#39;ll send that back via JSON, so the first thing to do is to update the <code>JsonResponse</code> struct to indicate if there is an error, and if so, what the error message was. It&#39;d get a bit boring to type out the default success and error messages, so we&#39;ll also add a couple of functions to create <code>JsonResponse</code> structs:</p>
+
+<p><code></code>`</p>
+
+<h1>[derive(RustcEncodable, RustcDecodable)]</h1>
+
+<p>struct JsonResponse {
+  response: String,
+  success: bool,
+  error_message: String
+}</p>
+
+<p>impl JsonResponse {
+  fn success(response: String) -&gt; Self {
+    JsonResponse { response: response, success: true, error<em>message: &quot;&quot;.to</em>string() }
+  }</p>
+
+<p>  fn error(msg: String) -&gt; Self {
+    JsonResponse { response: &quot;&quot;.to<em>string(), success: false, error</em>message: msg }
+  }
+}
+<code></code>`</p>
+
+<p>(whether or not it&#39;s a good idea to send raw error messages to users I&#39;ll leave up to you). We&#39;ll also need a new struct for incoming requests, since users don&#39;t need to send &#39;success&#39; or &#39;error_message&#39; fields:</p>
+
+<p><code></code>`</p>
+
+<h1>[derive(RustcDecodable)]</h1>
+
+<p>struct JsonRequest {
+  response: String
+}
+<code></code>`</p>
+
+<p>and then update all our existing calls to the struct.</p>
+
+<p><code></code>`
+fn handler(req: &amp;mut Request) -&gt; IronResult&lt;Response&gt; {
+  // use the success fn
+  let response = JsonResponse::success(response: pick<em>response(&quot;Brian&quot;.to</em>string()));
+  let out = json::encode(&amp;response).unwrap();</p>
+
+<p>  let content<em>type = &quot;application/json&quot;.parse::&lt;Mime&gt;().unwrap();
+  Ok(Response::with((content</em>type, status::Ok, out)))
+}</p>
+
+<p>fn post<em>handler(req: &amp;mut Request) -&gt; IronResult&lt;Response&gt; {
+  let mut payload = String::new();
+  req.body.read</em>to_string(&amp;mut payload).unwrap();
+  println!(&quot;{:?}&quot;, payload);</p>
+
+<p>  // use the JsonRequest struct, since incoming will just have the name
+  let incoming: JsonRequest = json::decode(&amp;payload).unwrap();</p>
+
+<p>  // update to use success fn
+  let response = JsonResponse::success(response: pick_response(incoming.response));
+  let out = json::encode(&amp;response).unwrap();</p>
+
+<p>  let content<em>type = &quot;application/json&quot;.parse::&lt;Mime&gt;().unwrap();
+  Ok(Response::with((content</em>type, status::Ok, out)))
+}
+<code></code>`</p>
+
+<p>In <code>post_handler</code>, we can now use a <code>match</code> to check if the incoming JSON is correct, rather than an <code>unwrap</code> call. If there is an error, then we create a response with the error message and send that; if not, we can respond as usual.</p>
+
+<p><code></code>`
+fn post<em>handler(req: &amp;mut Request) -&gt; IronResult&lt;Response&gt; {
+  let mut payload = String::new();
+  req.body.read</em>to_string(&amp;mut payload).unwrap();
+  println!(&quot;{:?}&quot;, payload);</p>
+
+<p>  let out = match json::decode(&amp;payload) {
+    Err(e) =&gt; {
+      let response = JsonResponse::error(format!(&quot;Error parsing JSON: {:?}&quot;, e));
+      json::encode(&amp;response).unwrap()
+    },
+    Ok(incoming) =&gt; {
+      // Rust needs to know the type of incoming before we can use it in get<em>name, so set to a variable with a type
+      let converted: JsonRequest = incoming;
+      let response = JsonResponse::success(get</em>name(converted.name));
+      json::encode(&amp;response).unwrap()
+    }
+  };</p>
+
+<p>  // print out the JSON as usual
+  let content<em>type = &quot;application/json&quot;.parse::&lt;Mime&gt;().unwrap();
+  Ok(Response::with((content</em>type, status::Ok, out)))
+}
+<code></code>`</p>
+
+<p>Error response:
+<code></code>`
+curl -X POST -d &#39;{ invalid: &quot;Bob&quot; }&#39; http://localhost:3009</p>
+
+<p>{&quot;name&quot;:&quot;&quot;,&quot;success&quot;:false,&quot;error_message&quot;:&quot;Error parsing JSON: ParseError(SyntaxError(\&quot;key must be a string\&quot;, 1, 3))&quot;}
+<code></code>`</p>
+
+<p>Normal response:
+<code></code>`
+curl -X POST -d &#39;{ &quot;name&quot;:&quot;Bob&quot; }&#39; http://localhost:3009</p>
+
+<p>{&quot;name&quot;:&quot;Hello Bob!&quot;,&quot;success&quot;:true,&quot;error_message&quot;:&quot;&quot;}
+<code></code>`</p>
+
+<p>We&#39;ve also got an <code>unwrap</code> when reading the request body:
+<code>
+req.body.read_to_string(&amp;mut payload).unwrap();
+</code></p>
+
+<p>If something goes wrong here, then it&#39;s likely that the post body is completely malformed and we can&#39;t use it, so we may as well stop trying to handle this request. If we fail out of this function, the server will still be listening for more requests so won&#39;t crash entirely, so we can replace <code>unwrap</code> with <code>expect</code>. <code>expect</code> is very similar to <code>unwrap</code> in that it panics on error, except it allows you to define your own error message so it&#39;s clear what happened.</p>
+
+<p><code>
+req.body.read_to_string(&amp;mut payload).expect(&quot;Failed to read request body&quot;);
+</code></p>
+
+<p>Similarly, the <code>json::encode</code> lines in the match statement can use <code>expect</code> rather than <code>unwrap</code> - in this case, something&#39;s gone wrong when with the JSON encoder, so we&#39;re not able to prepare JSON to send back to the user.</p>
+
+<p>The final <code>unwrap</code> in this function is in setting the content type; again, an <code>expect</code> seems appropriate since this should just indicate programmer error.</p>
+
+<p><code></code>`
+fn post<em>handler(req: &amp;mut Request) -&gt; IronResult&lt;Response&gt; {
+  let mut payload = String::new();
+  req.body.read</em>to_string(&amp;mut payload).expect(&quot;Failed to read request body&quot;);</p>
+
+<p>  // let incoming: JsonResponse = json::decode(&amp;payload).ok().expect(&quot;Invalid JSON in POST body&quot;);
+  let out = match json::decode(&amp;payload) {
+    Err(e) =&gt; {
+      let response = JsonResponse::error(format!(&quot;Error parsing JSON: {:?}&quot;, e));
+      json::encode(&amp;response).ok().expect(&quot;Error encoding response&quot;)
+    },
+    Ok(incoming) =&gt; {
+      let converted: JsonRequest = incoming;
+      let response = JsonResponse::success(get_name(converted.name));
+      json::encode(&amp;response).expect(&quot;Error encoding response&quot;)
+    }
+  };</p>
+
+<p>  let content<em>type = &quot;application/json&quot;.parse::&lt;Mime&gt;().expect(&quot;Failed to parse mime type&quot;);
+  Ok(Response::with((content</em>type, status::Ok, out)))
+}
+<code></code>`</p>
+
+<p>Full programme so far:</p>
+
+<p><code></code>`
+extern crate rand;
+extern crate iron;
+extern crate rustc_serialize;
+extern crate router;</p>
+
+<p>use iron::prelude::*;
+use iron::status;
+use iron::mime::Mime;
+use rand::Rng;
+use rustc_serialize::json;
+use router::Router;
+use std::io::Read;</p>
+
+<h1>[derive(RustcDecodable)]</h1>
+
+<p>struct JsonRequest {
+  name: String
+}</p>
+
+<h1>[derive(RustcEncodable, RustcDecodable)]</h1>
+
+<p>struct JsonResponse {
+  response: String,
+  success: bool,
+  error_message: String
+}</p>
+
+<p>impl JsonResponse {
+  fn success(response: String) -&gt; Self {
+    JsonResponse { response: response, success: true, error<em>message: &quot;&quot;.to</em>string() }
+  }</p>
+
+<p>  fn error(msg: String) -&gt; Self {
+    JsonResponse { response: &quot;&quot;.to<em>string(), success: false, error</em>message: msg }
+  }
+}</p>
+
+<p>fn pick<em>response(name: String) -&gt; String {
+  let num = rand::thread</em>rng().gen_range(1, 4);</p>
+
+<p>  let response = match num {
+    1 =&gt; format!(&quot;Hello {}!&quot;, name),
+    2 =&gt; format!(&quot;Did you see that ludicrous display last night, {}?&quot;, name),
+    3 =&gt; format!(&quot;Nice weather for ducks, isn&#39;t it {}&quot;, name),
+    _ =&gt; format!(&quot;&quot;)     // match is exhaustive
+  };</p>
+
+<p>  response.to_string()
+}</p>
+
+<p>fn handler(req: &amp;mut Request) -&gt; IronResult&lt;Response&gt; {
+  let response = JsonResponse::success(response: pick<em>response(&quot;Brian&quot;.to</em>string()));
+  let out = json::encode(&amp;response).expect(&quot;Failed to encode response&quot;);</p>
+
+<p>  let content<em>type = &quot;application/json&quot;.parse::&lt;Mime&gt;().expect(&quot;Failed to parse content type&quot;);
+  Ok(Response::with((content</em>type, status::Ok, out)))
+}</p>
+
+<p>fn post<em>handler(req: &amp;mut Request) -&gt; IronResult&lt;Response&gt; {
+  let mut payload = String::new();
+  req.body.read</em>to_string(&amp;mut payload).expect(&quot;Failed to read request body&quot;);</p>
+
+<p>  // let incoming: JsonResponse = json::decode(&amp;payload).ok().expect(&quot;Invalid JSON in POST body&quot;);
+  let out = match json::decode(&amp;payload) {
+    Err(e) =&gt; {
+      let response = JsonResponse::error(format!(&quot;Error parsing JSON: {:?}&quot;, e));
+      json::encode(&amp;response).ok().expect(&quot;Error encoding response&quot;)
+    },
+    Ok(incoming) =&gt; {
+      let converted: JsonRequest = incoming;
+      let response = JsonResponse::success(get_name(converted.name));
+      json::encode(&amp;response).expect(&quot;Error encoding response&quot;)
+    }
+  };</p>
+
+<p>  let content<em>type = &quot;application/json&quot;.parse::&lt;Mime&gt;().expect(&quot;Failed to parse content type&quot;);
+  Ok(Response::with((content</em>type, status::Ok, out)))
+}</p>
+
+<p>fn main() {
+  let mut router = Router::new();
+  router.get(&quot;/&quot;, handler, &quot;index&quot;);
+  router.post(&quot;/&quot;, post<em>handler, &quot;post</em>name&quot;);</p>
+
+<p>  println!(&quot;Listening on localhost:3009&quot;);
+  Iron::new(router).http(&quot;localhost:3009&quot;).ok();
+}
+<code></code>`</p>
+
+<h2>Deploying</h2>
+
+<p>To deploy, there are a few options for Rust:</p>
+
+<ol><li>Build on dev machine</li><li>Build on server</li><li>Create VM, build and transfer to server</li></ol>
+
+<p>There are advantages and disadvantages to all three approaches: building on your development machine is simplest, but if your dev operating system isn&#39;t the same as your production server, the compiled programme probably won&#39;t work. Transferring the files to your server and building there will make sure that the compiled version will run properly, but will use up resources on your production server, which could then cause problems if you&#39;re using a low-powered server. Finally, the most robust but most involved option is to create a VM or container with the correct OS and dependencies, build in there then transfer the compiled programme to your server.</p>
+
+<p>Whichever option you choose, make sure you run <code>cargo build --release</code> to ensure the compiled programme is optimised.</p>
+
+<h2>Nginx</h2>
+
+<p>Since Iron, and most Rust servers, are still quite immature, it&#39;s a good idea to use a well-tested and robust server as a <a href="https://www.nginx.com/resources/glossary/reverse-proxy-server/">reverse-proxy</a> in front of your Rust programme. This basically means that a server listens for all incoming requests, passes the request to Rust, takes the output and displays it to the user. This is especially useful in this case, since it means we can use SSL and gzip and know that we&#39;re not going to run into any problems.</p>
+
+<p>We&#39;ll use Nginx as our reverse-proxy: this assumes you&#39;re serving on Ubuntu/other Linux.</p>
+
+<p><code>
+apt-get install nginx
+</code></p>
+
+<p>Edit the <code>location</code> block in <code>/etc/nginx/sites-enabled/default</code>; the key part is to set up the proxy to pass traffic to our Rust server:</p>
+
+<p><code>
+location / {
+    proxy_set_header Host $http_host;
+    proxy_pass http://localhost:3009; // this needs to match the address set in Iron
+    proxy_redirect off;
+}
+</code></p>
+
+<p>This will listen on the default port (80) for any traffic and send it to our Rust programme, which is listening for port 3009. The Rust programme can now only be accessed via Nginx unless you&#39;ve opened that port on your server.</p>
+
+<p>Reload Nginx with <code>service nginx restart</code>.</p>
+
+<p>Nginx also makes it easy to <a href="https://www.digitalocean.com/community/tutorials/how-to-secure-nginx-with-let-s-encrypt-on-ubuntu-14-04">use SSL via Let&#39;s Encrypt</a>, so it&#39;s simple to run your API over HTTPS.</p>
+
+<h2>Supervisor</h2>
+
+<p>The final step is to start the Rust programme, and make sure it keeps running by using <code>supervisor</code>:</p>
+
+<p><code>
+apt-get install supervisor
+</code></p>
+
+<p>Set <code>/etc/supervisor/conf.d/[your programme name].conf</code></p>
+
+<p><code>
+[program:yourname]
+command=/path/to/your/compiled/Rust/app
+autostart=true
+autorestart=true
+stderr_logfile=/var/log/name.err.log
+stdout_logfile=/var/log/name.out.log
+</code></p>
+
+<p><code>
+service supervisor restart
+</code></p>
+
+<p>Supervisor runs your programme when your server starts, and makes sure it starts up if you restart your server.</p>
+
+<p>You should now be able to visit your server IP address and see the JSON response!</p>
+
+<h2>conclusion</h2>
+
+<p>I found Iron quite easy to use, although <a href="https://github.com/iron/iron/tree/master/examples">the documentation was a bit lacking</a> past the &quot;Hello World&quot;. A handy example I found was <a href="https://github.com/brson/httptest">brson&#39;s detailed notes</a> on setting up almost exactly what I was doing, which was useful in putting all the parts together.</p>
+
+<p>Getting parameters from a request seems pretty clumsy in Iron:</p>
+
+<p><code></code>`
+fn handler(req: &amp;mut Request) -&gt; IronResult&lt;Response&gt; {
+  // get
+  let ref name = req.extensions.get::&lt;Router&gt;().unwrap().find(&quot;name&quot;).unwrap_or(&quot;/&quot;);</p>
+
+<p>  // post
+  req.body.read<em>to</em>string(&amp;mut payload).expect(&quot;Failed to read request body&quot;);</p>
+
+<p>  ...
+}
+<code></code>`</p>
+
+<p><a href="https://github.com/nickel-org/nickel.rs/blob/master/examples/json.rs">Compared with Nickel</a>, it&#39;s pretty verbose:</p>
+
+<p><code></code>` // Nickel example
+server.get(&quot;/:first/:last&quot;, middleware! { |req|
+    let first<em>name = req.param(&quot;first&quot;).unwrap();
+    let last</em>name = req.param(&quot;last&quot;).unwrap();</p>
+
+<pre><code>...</code></pre>
+
+<p>});
+<code></code>`</p>
+
+<h2>Next steps</h2>
+
+<p>I think the next step is to build something slightly more complex, such as an API with a database behind it and with some sort of frontend. There&#39;s a <a href="https://github.com/flosse/rust-web-framework-comparison">list of web development articles using Rust</a> here, which looks pretty handy.</p>
